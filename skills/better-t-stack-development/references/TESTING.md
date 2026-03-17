@@ -106,7 +106,6 @@ import "@testing-library/jest-dom";
 {
   "tasks": {
     "test": {
-      "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
     },
     "test:watch": {
@@ -114,12 +113,13 @@ import "@testing-library/jest-dom";
       "persistent": true
     },
     "test:coverage": {
-      "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
     }
   }
 }
 ```
+
+> **No `dependsOn: ["^build"]`** — packages use the internal packages pattern, exporting directly from `./src/*.ts`. There is no `dist/` to build before tests can import them.
 
 ### 6. Root convenience scripts in root `package.json`
 
@@ -378,6 +378,63 @@ describe("audit-log plugin", () => {
   });
 });
 ```
+
+### Test Utilities (`apps/web/src/test/utils.tsx`)
+
+Shared helpers for tests that need TanStack Query context. Always import from here instead of rolling your own wrapper.
+
+| Export | Purpose |
+| --- | --- |
+| `createTestQueryClient()` | Fresh `QueryClient` with retries off + `gcTime: Infinity` |
+| `createQueryWrapper()` | `wrapper` for `renderHook` when the hook uses `useQuery`/`useMutation` |
+| `renderWithQuery(ui, options?)` | Drop-in for `render()` — wraps with `QueryClientProvider`, also returns `queryClient` |
+
+**Components with query hooks:**
+
+```tsx
+import { renderWithQuery } from "@/test/utils";
+import { screen, waitFor } from "@testing-library/react";
+
+vi.mock("@/utils/orpc", () => ({
+  orpc: {
+    users: {
+      list: { queryOptions: vi.fn(() => ({ queryKey: ["users"], queryFn: async () => [] })) },
+    },
+  },
+}));
+
+it("renders user list", async () => {
+  renderWithQuery(<UserList />);
+  await waitFor(() => expect(screen.getByText("No users")).toBeInTheDocument());
+});
+```
+
+**Hooks that use useQuery/useMutation:**
+
+```tsx
+import { renderHook, waitFor } from "@testing-library/react";
+import { createQueryWrapper } from "@/test/utils";
+
+it("fetches data", async () => {
+  const { result } = renderHook(() => useMyHook(), {
+    wrapper: createQueryWrapper(),
+  });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data).toEqual([]);
+});
+```
+
+**Inspecting query cache state:**
+
+```tsx
+it("invalidates cache on mutation", async () => {
+  const { queryClient } = renderWithQuery(<MyForm />);
+  // after submission...
+  expect(queryClient.getQueryState(["users"])).toBeUndefined(); // invalidated
+});
+```
+
+---
 
 ### Component Tests — React Testing Library
 

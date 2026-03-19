@@ -1,7 +1,7 @@
 ---
 name: better-t-stack-development
 description: >
-  Full-stack development patterns for Ricka7x's Better-T-Stack setup.
+  Full-stack development patterns for the Better-T-Stack setup.
   Use this skill whenever working on any project in this stack — adding a feature,
   creating a route, building a form, writing a procedure, defining a schema,
   scaffolding a new package, reviewing code, or writing tests. Triggers on: new feature,
@@ -13,7 +13,7 @@ description: >
 
 # Better-T-Stack Development
 
-Ricka7x's opinionated full-stack setup built on top of [Better-T-Stack](https://better-t-stack.dev). This skill captures the concrete decisions, patterns, and conventions used across projects — not the generic docs.
+Opinionated full-stack setup built on top of [Better-T-Stack](https://better-t-stack.dev). This skill captures the concrete decisions, patterns, and conventions used across projects — not the generic docs.
 
 ## Stack at a Glance
 

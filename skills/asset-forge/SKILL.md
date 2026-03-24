@@ -33,6 +33,21 @@ forge config get
 forge config reset
 ```
 
+### Output directory — always optional
+
+The output argument is optional on every command. Priority order:
+
+1. Explicit argument — `asset-forge favicon logo.png ./public`
+2. `FORGE_OUT` env var — overrides for a single run
+3. `outDir` config value — persistent default
+4. Current working directory — fallback
+
+If no `outDir` is configured and no explicit output is given, asset-forge writes to the current directory and prints a setup tip. Set a default to suppress it:
+
+```bash
+forge config set outDir ~/Desktop/assets
+```
+
 Override output dir per-run:
 ```bash
 FORGE_OUT=/tmp/preview asset-forge og-image -b photo.jpg
@@ -510,14 +525,17 @@ asset-forge compress-video video.mp4 email.mp4 25       # target 25MB (email)
 
 ---
 
-### extract-frames — Pull frames from video as PNGs
+### extract-frames — Pull frames from video as images
 ```bash
-asset-forge extract-frames <video> [output_dir] [mode]
+asset-forge extract-frames <video> [output_dir] [mode] [--format png|webp|jpg] [--count N] [--scroll]
 # mode: 1 (1fps, default), 0.5 (1 every 2s), 24 (24fps), all (every frame)
 
 asset-forge extract-frames demo.mp4
 asset-forge extract-frames demo.mp4 ./frames all
-asset-forge extract-frames demo.mp4 ./frames 0.25   # 1 frame every 4 seconds
+asset-forge extract-frames demo.mp4 ./frames 0.25       # 1 frame every 4 seconds
+asset-forge extract-frames demo.mp4 --count 60          # exactly 60 frames evenly distributed
+asset-forge extract-frames demo.mp4 --scroll            # scroll animation: 60 WebP frames + manifest.json + JS snippet
+asset-forge extract-frames demo.mp4 --scroll --count 30 # scroll mode with custom frame count
 ```
 
 ---

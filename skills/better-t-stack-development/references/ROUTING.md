@@ -199,6 +199,203 @@ try {
 }
 ```
 
+### Type-Safe Errors with `isDefinedError`
+
+For oRPC procedures that declare typed errors, use `isDefinedError` instead of a bare `catch` to get the narrowed error shape (`.code`, `.message`, `.data`):
+
+```tsx
+import { isDefinedError } from "@orpc/client";
+
+const mutation = useMutation(
+  orpc.planet.create.mutationOptions({
+    onError: (error) => {
+      if (isDefinedError(error)) {
+        if (error.code === "CONFLICT") {
+          toast.error("Item already exists");
+        } else {
+          toast.error(error.message);
+        }
+      }
+    },
+  })
+);
+```
+
+### Error Boundaries
+
+For render-time errors (not just query/mutation errors), pair `QueryErrorResetBoundary` with an error boundary so "Retry" actually re-fires the failed query:
+
+```tsx
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { ErrorBoundary } from "react-error-boundary";
+
+<QueryErrorResetBoundary>
+  {({ reset }) => (
+    <ErrorBoundary
+      onReset={reset}
+      fallbackRender={({ resetErrorBoundary }) => (
+        <div>
+          <p>Something went wrong.</p>
+          <button onClick={resetErrorBoundary} type="button">Retry</button>
+        </div>
+      )}
+    >
+      <MyComponent />
+    </ErrorBoundary>
+  )}
+</QueryErrorResetBoundary>
+```
+
+## Conditional Queries with `skipToken`
+
+Prefer `skipToken` over `enabled` when the input itself is only conditionally available — it keeps the input type-safe (no `!` non-null assertion needed):
+
+```tsx
+import { skipToken } from "@tanstack/react-query";
+
+const { data } = useQuery(
+  orpc.planet.find.queryOptions({
+    input: planetId ? { id: planetId } : skipToken,
+  })
+);
+
+// Equivalent to, but without the `!` assertion:
+const { data } = useQuery({
+  ...orpc.planet.find.queryOptions({ input: { id: planetId! } }),
+  enabled: !!planetId,
+});
+```
+
+## Query Key Helpers
+
+Every oRPC procedure exposes key helpers for cache targeting — prefer these over hand-written arrays:
+
+```tsx
+orpc.planet.key()                                  // partial key — matches ALL planet queries (any procedure, any input)
+orpc.planet.key({ type: "query" })                 // partial key — only non-infinite planet queries
+orpc.planet.find.queryKey({ input: { id: 123 } })  // full key — one specific query
+orpc.planet.list.infiniteKey({ input: (page) => ({ offset: page }) }) // full key — one specific infinite query
+orpc.planet.create.mutationKey()                   // mutation key
+
+// Broad invalidation (any planet.* query)
+queryClient.invalidateQueries({ queryKey: orpc.planet.key() });
+
+// Targeted cache write (no refetch)
+queryClient.setQueryData(
+  orpc.planet.find.queryKey({ input: { id: 123 } }),
+  (old) => ({ ...old, name: "Earth" })
+);
+```
+
+## Sequential & Parallel Mutations
+
+**Sequential** (each step depends on the last — e.g. presigned-URL upload flow):
+
+```tsx
+const getPresignedUrl = useMutation(orpc.s3.getPresignedUrl.mutationOptions());
+const saveFile = useMutation(orpc.s3.saveFile.mutationOptions());
+
+const handleUpload = async (file: File) => {
+  try {
+    const { url } = await getPresignedUrl.mutateAsync({ key, contentType: file.type });
+    await fetch(url, { method: "PUT", body: file });
+    await saveFile.mutateAsync({ url: url.split("?")[0], name: file.name, size: file.size });
+    toast.success("Uploaded!");
+  } catch {
+    toast.error("Upload failed");
+  }
+};
+```
+
+**Parallel** (independent — run together with `Promise.all`):
+
+```tsx
+const updateProfile = useMutation(orpc.user.updateProfile.mutationOptions());
+const uploadAvatar = useMutation(orpc.user.uploadAvatar.mutationOptions());
+
+const handleSave = async () => {
+  try {
+    await Promise.all([
+      updateProfile.mutateAsync({ name, bio }),
+      uploadAvatar.mutateAsync({ file: avatarFile }),
+    ]);
+    toast.success("Profile updated!");
+  } catch {
+    toast.error("Update failed");
+  }
+};
+```
+
+## Optimistic Updates
+
+Two patterns — pick based on how complex the update is.
+
+**Pattern 1 — `useMutationState`** (simple: list appends, no rollback needed):
+
+```tsx
+const addTodo = useMutation({
+  mutationKey: ["addTodo"], // required for useMutationState to find it
+  ...orpc.todos.create.mutationOptions(),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: orpc.todos.key() }),
+});
+
+const pendingTodos = useMutationState({
+  filters: { mutationKey: ["addTodo"], status: "pending" },
+  select: (m) => m.state.variables,
+});
+// Render committed todos, then map pendingTodos with reduced opacity as "saving..."
+```
+
+**Pattern 2 — cache manipulation** (complex: edits/deletes/toggles, needs rollback on error):
+
+```tsx
+const updateTodo = useMutation({
+  ...orpc.todos.update.mutationOptions(),
+  onMutate: async (newData) => {
+    await queryClient.cancelQueries({ queryKey: orpc.todos.detail.key({ input: { id } }) });
+    const previous = queryClient.getQueryData(orpc.todos.detail.queryKey({ input: { id } }));
+    queryClient.setQueryData(orpc.todos.detail.queryKey({ input: { id } }), (old) => ({ ...old, ...newData }));
+    return { previous }; // passed to onError as `context`
+  },
+  onError: (_err, _vars, context) => {
+    if (context?.previous) {
+      queryClient.setQueryData(orpc.todos.detail.queryKey({ input: { id } }), context.previous);
+    }
+  },
+  onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.todos.key() }),
+});
+```
+
+Use Pattern 1 for list-appends and simple additions; use Pattern 2 whenever the mutation needs to look "already applied" before the round-trip completes (edits, deletes, toggles).
+
+## Infinite Queries
+
+For infinite-scroll pagination:
+
+```tsx
+import { useInfiniteQuery } from "@tanstack/react-query";
+
+const query = useInfiniteQuery(
+  orpc.planet.list.infiniteOptions({
+    input: (pageParam: number | undefined) => ({ limit: 10, offset: pageParam }),
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.nextPageParam,
+  })
+);
+
+const items = query.data?.pages.flatMap((page) => page.items);
+
+<button
+  disabled={!query.hasNextPage || query.isFetchingNextPage}
+  onClick={() => query.fetchNextPage()}
+  type="button"
+>
+  {query.isFetchingNextPage ? "Loading..." : "Load More"}
+</button>
+```
+
+Note the `input` for an infinite query is a **function** of the page param — unlike a regular query's plain `input` object.
+
 ## Anti-Patterns
 
 - ❌ Use `navigate()` inside `beforeLoad` — use `throw redirect(...)`
@@ -208,3 +405,6 @@ try {
 - ❌ Skip `credentials: "include"` — already set in the oRPC `RPCLink` fetch config
 - ❌ Define `queryClient` or `orpc` in component scope — use the singletons from `utils/orpc.ts`
 - ❌ Omit query invalidation after mutations
+- ❌ Use cache manipulation (Pattern 2) for a simple list append — use `useMutationState` (Pattern 1) instead
+- ❌ Prefetch data that changes frequently, or without setting `staleTime` — it may refetch immediately anyway
+- ❌ Define queries inside `beforeLoad` — use a route `loader` or a component-level `useQuery` instead

@@ -96,13 +96,14 @@ Always run `bun x ultracite fix` before committing. Key rules enforced:
 |---|---|
 | Building a component, hook, or UI feature | [references/COMPONENTS.md](references/COMPONENTS.md) |
 | Setting up or writing tests | [references/TESTING.md](references/TESTING.md) |
-| Building a custom better-auth plugin | [references/BETTER_AUTH_PLUGINS.md](references/BETTER_AUTH_PLUGINS.md) |
+| Building a custom better-auth plugin | [references/BETTER-AUTH-PLUGIN.md](references/BETTER-AUTH-PLUGIN.md) |
 | Adding a new API procedure / router | [references/PROCEDURES.md](references/PROCEDURES.md) |
 | Writing or modifying a DB schema | [references/DATABASE.md](references/DATABASE.md) |
 | Building a new form | [references/FORMS.md](references/FORMS.md) |
 | Adding a new web route / page | [references/ROUTING.md](references/ROUTING.md) |
 | Working on the Expo native app | [references/NATIVE.md](references/NATIVE.md) |
 | Query invalidation across oRPC + Better Auth (multi-tenant) | [references/QUERY_INVALIDATION.md](references/QUERY_INVALIDATION.md) |
+| Migrating a component from Radix UI to Base UI | [references/BASE_UI_MIGRATION.md](references/BASE_UI_MIGRATION.md) |
 
 ---
 

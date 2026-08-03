@@ -2,8 +2,6 @@
 
 How we write custom plugins in this project. Plugins live in `packages/auth/src/plugins/`.
 
-For the full low-level API reference (all types, `Where`, adapter methods, better-fetch plugin API, pagination pattern) see the `better-auth-plugin` skill at `/mnt/skills/user/better-auth-plugin/SKILL.md` — load it when building a plugin. This file covers our project-specific conventions and integration points.
-
 ---
 
 ## Plugin Location
@@ -314,6 +312,68 @@ Client usage auto-converts path to camelCase:
 const { data, error } = await authClient.auditLog.listEntries({ page: 1 });
 ```
 
+### 7. Defaults object must not use `as const` with mutable array properties
+
+When merging defaults into a resolved-options type, `as const` makes arrays `readonly`, which is incompatible with a plain `string[]` field on the options interface:
+
+```ts
+// ❌ WRONG — readonly ["admin"] is not assignable to string[]
+const DEFAULTS = {
+  roles: ["admin"],
+  pageSize: 50,
+} as const;
+
+// ✅ Correct — explicit type annotation keeps arrays mutable
+const DEFAULTS: Pick<ResolvedOptions, "roles" | "pageSize"> = {
+  roles: ["admin"],
+  pageSize: 50,
+};
+```
+
+### 8. Don't redefine the adapter interface with `operator: string`
+
+When typing a function that receives `ctx.context` (the auth context), use the real `Where` type rather than a hand-rolled shape — `operator: string` won't be assignable to the real `WhereOperator` union:
+
+```ts
+// ❌ WRONG — operator: string is not assignable to WhereOperator
+interface MyContext {
+  adapter: {
+    findMany: <T>(opts: {
+      model: string;
+      where?: Array<{ field: string; operator: string; value: unknown }>;
+    }) => Promise<T[]>;
+  };
+}
+
+// ✅ Correct — use Where from better-auth
+import type { Where } from "better-auth";
+
+interface MyContext {
+  adapter: {
+    findMany: <T>(opts: { model: string; where?: Where[] }) => Promise<T[]>;
+  };
+}
+```
+
+---
+
+## Context Object Reference
+
+Inside `createAuthEndpoint` handlers, `ctx.context` provides:
+
+| Property | Description |
+|---|---|
+| `adapter` | ORM-like DB functions (`findOne`, `findMany`, `create`, `update`, `delete`, `count`) — **preferred** over raw SQL |
+| `db` | Raw Kysely instance for complex joins/SQL |
+| `internalAdapter` | Built-in helpers (`findUserById`, `createSession`, `listUsers`, etc.) |
+| `options` | The BetterAuth instance options |
+| `secret` | Server secret key |
+| `baseURL` | Auth server base URL |
+| `logger` | Logger instance |
+| `session` | Available when `sessionMiddleware` is in the endpoint's `use` array |
+| `createAuthCookie` | Cookie helper |
+| `isTrustedOrigin` | Origin validation helper |
+
 ---
 
 ## Session Access Patterns
@@ -377,6 +437,178 @@ await ctx.context.adapter.delete({
   model: "auditLog",
   where: [{ field: "id", operator: "eq", value: id }],
 });
+```
+
+---
+
+## Pagination, Filtering, Searching & Sorting
+
+Full pattern for a list endpoint, extracted from the better-auth admin plugin. The audit-log example above only shows simple `page`/`limit` — reach for this when a list endpoint also needs search, arbitrary-field filtering, or sorting.
+
+### Query Schema
+
+All params are optional — the endpoint works as a plain "get all" if none are provided.
+
+```ts
+import * as z from "zod";
+import { whereOperators } from "better-auth/db";
+// whereOperators ≈ ["eq", "ne", "lt", "lte", "gt", "gte", "in", "not_in", "contains", "starts_with", "ends_with"]
+
+const listItemsQuerySchema = z.object({
+  // --- Search ---
+  searchValue: z.string().optional(),
+  searchField: z.string().optional(), // defaults to "name" in the handler
+  searchOperator: z.enum(["contains", "starts_with", "ends_with"]).optional(),
+
+  // --- Pagination ---
+  limit: z.string().or(z.number()).optional(),
+  offset: z.string().or(z.number()).optional(),
+
+  // --- Sorting ---
+  sortBy: z.string().optional(),
+  sortDirection: z.enum(["asc", "desc"]).optional(),
+
+  // --- Filtering ---
+  filterField: z.string().optional(),
+  filterValue: z
+    .string()
+    .or(z.number())
+    .or(z.boolean())
+    .or(z.array(z.string()))
+    .or(z.array(z.number()))
+    .optional(),
+  filterOperator: z.enum(whereOperators).optional(), // defaults to "eq"
+});
+```
+
+- `limit`/`offset` accept both `string` (raw query params) and `number` — always coerce with `Number()` in the handler.
+- `searchField` should be a constrained enum per-model in real usage, to prevent arbitrary column access — see the reusable factory below.
+- `filterOperator` uses the full `whereOperators` enum from better-auth's adapter.
+
+### Full List Endpoint
+
+```ts
+import { createAuthEndpoint, sessionMiddleware } from "better-auth/api";
+import type { Where } from "better-auth";
+
+export const listItems = (opts: MyPluginOptions) =>
+  createAuthEndpoint(
+    "/my-plugin/list-items",
+    { method: "GET", use: [sessionMiddleware], query: listItemsQuerySchema },
+    async (ctx) => {
+      const where: Where[] = [];
+
+      if (ctx.query?.searchValue) {
+        where.push({
+          field: ctx.query.searchField || "name",
+          operator: ctx.query.searchOperator || "contains",
+          value: ctx.query.searchValue,
+        });
+      }
+
+      if (ctx.query?.filterValue !== undefined) {
+        where.push({
+          field: ctx.query.filterField || "name",
+          operator: ctx.query.filterOperator || "eq",
+          value: ctx.query.filterValue,
+        });
+      }
+
+      const limit = Number(ctx.query?.limit) || opts.defaultPageSize || 20;
+      const offset = Number(ctx.query?.offset) || 0;
+      const sortBy = ctx.query?.sortBy
+        ? { field: ctx.query.sortBy, direction: ctx.query.sortDirection || ("asc" as const) }
+        : undefined;
+
+      const items = await ctx.context.adapter.findMany({
+        model: "myPluginItems",
+        where: where.length ? where : undefined,
+        limit,
+        offset,
+        sortBy,
+      });
+
+      // Total count with the same filters, for pagination UI
+      const total = await ctx.context.adapter.count({
+        model: "myPluginItems",
+        where: where.length ? where : undefined,
+      });
+
+      return ctx.json({ items, total, limit, offset });
+    },
+  );
+```
+
+Response shape: `{ items: Item[]; total: number; limit?: number; offset?: number }`.
+
+For the built-in `user` model specifically, better-auth's admin plugin exposes `internalAdapter.listUsers(limit, offset, sortBy, where)` / `internalAdapter.countTotalUsers(where)` instead — use `ctx.context.adapter.findMany()`/`.count()` for custom tables.
+
+### Reusable Query Schema Factory
+
+DRY this up across multiple models by constraining `searchField` to that model's actual searchable columns:
+
+```ts
+export function createListQuerySchema<T extends string>(searchableFields: readonly T[]) {
+  return z.object({
+    searchValue: z.string().optional(),
+    searchField: z.enum(searchableFields as [T, ...T[]]).optional(),
+    searchOperator: z.enum(["contains", "starts_with", "ends_with"]).optional(),
+    limit: z.string().or(z.number()).optional(),
+    offset: z.string().or(z.number()).optional(),
+    sortBy: z.string().optional(),
+    sortDirection: z.enum(["asc", "desc"]).optional(),
+    filterField: z.string().optional(),
+    filterValue: z.string().or(z.number()).or(z.boolean()).or(z.array(z.string())).or(z.array(z.number())).optional(),
+    filterOperator: z.enum(whereOperators).optional(),
+  });
+}
+
+// Usage:
+const listItemsQuery = createListQuerySchema(["name", "description"] as const);
+const listOrdersQuery = createListQuerySchema(["status", "customerName"] as const);
+```
+
+### Client Usage
+
+```ts
+const { data, error } = await authClient.myPlugin.listItems({
+  query: {
+    searchValue: "foo",
+    searchField: "name",
+    limit: "10",
+    offset: "0",
+    sortBy: "createdAt",
+    sortDirection: "desc",
+    filterField: "isActive",
+    filterValue: "true",
+  },
+});
+// data.items, data.total, data.limit, data.offset
+```
+
+### Cursor-Based Pagination Alternative
+
+Prefer this over offset pagination for large, frequently-appended tables:
+
+```ts
+const cursorPaginationSchema = z.object({
+  cursor: z.string().optional(), // item ID to start after
+  limit: z.string().or(z.number()).optional(),
+});
+
+// In handler:
+const where: Where[] = [];
+if (ctx.query?.cursor) {
+  where.push({ field: "id", operator: "gt", value: ctx.query.cursor });
+}
+const items = await ctx.context.adapter.findMany({
+  model: "myPluginItems",
+  where: where.length ? where : undefined,
+  limit: Number(ctx.query?.limit) || 20,
+  sortBy: { field: "id", direction: "asc" },
+});
+const nextCursor = items.length ? items[items.length - 1].id : null;
+return ctx.json({ items, nextCursor });
 ```
 
 ---

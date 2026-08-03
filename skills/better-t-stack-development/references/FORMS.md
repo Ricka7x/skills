@@ -307,6 +307,134 @@ export function CreateMyFeatureDialog() {
 </form.Field>
 ```
 
+### Textarea
+```tsx
+<form.Field name="bio">
+  {(field) => {
+    const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+    return (
+      <Field data-invalid={isInvalid}>
+        <FieldLabel htmlFor={field.name}>Bio</FieldLabel>
+        <Textarea
+          aria-invalid={isInvalid}
+          id={field.name}
+          name={field.name}
+          onBlur={field.handleBlur}
+          onChange={(e) => field.handleChange(e.target.value)}
+          placeholder="Tell us about yourself..."
+          rows={4}
+          value={field.state.value}
+        />
+        <FieldDescription>Maximum 500 characters.</FieldDescription>
+        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+      </Field>
+    );
+  }}
+</form.Field>
+```
+
+### Radio Group
+```tsx
+<form.Field name="plan">
+  {(field) => {
+    const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+    return (
+      <Field data-invalid={isInvalid}>
+        <FieldLabel>Choose a plan</FieldLabel>
+        <RadioGroup name={field.name} onValueChange={field.handleChange} value={field.state.value}>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem id={`${field.name}-free`} value="free" />
+            <Label htmlFor={`${field.name}-free`}>Free</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem id={`${field.name}-pro`} value="pro" />
+            <Label htmlFor={`${field.name}-pro`}>Pro</Label>
+          </div>
+        </RadioGroup>
+        {isInvalid && <FieldError errors={field.state.meta.errors} />}
+      </Field>
+    );
+  }}
+</form.Field>
+```
+
+### Conditional Fields
+Read another field's live value with `form.getFieldValue(...)` to show/hide a dependent field:
+```tsx
+{form.getFieldValue("notifyByEmail") && (
+  <form.Field name="email">
+    {(field) => {
+      const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+      return (
+        <Field data-invalid={isInvalid}>
+          <FieldLabel htmlFor={field.name}>Email Address</FieldLabel>
+          <Input
+            aria-invalid={isInvalid}
+            id={field.name}
+            name={field.name}
+            onBlur={field.handleBlur}
+            onChange={(e) => field.handleChange(e.target.value)}
+            type="email"
+            value={field.state.value}
+          />
+          {isInvalid && <FieldError errors={field.state.meta.errors} />}
+        </Field>
+      );
+    }}
+  </form.Field>
+)}
+```
+
+## Handling Server Errors on a Field
+
+Map a mutation's error response onto a specific field instead of (or in addition to) a toast — useful for "email already exists"-style conflicts:
+
+```tsx
+const mutation = useMutation(
+  orpc.myFeature.create.mutationOptions({
+    onError: (error) => {
+      if (error.code === "CONFLICT") {
+        form.setFieldMeta("email", (meta) => ({
+          ...meta,
+          errors: ["Email already exists"],
+        }));
+        return;
+      }
+      toast.error(getErrorMessage(error, "Failed to create"));
+    },
+  })
+);
+```
+
+## base-ui Field Components Reference
+
+| Component | Purpose | Key props |
+|---|---|---|
+| `Field` | Wrapper for one field | `data-invalid`, `orientation` ("vertical" default, "horizontal" for button rows) |
+| `FieldLabel` | Accessible label | `htmlFor` (required, must match input `id`) |
+| `FieldDescription` | Help text below the input | — |
+| `FieldError` | Renders validation errors | `errors` (string array) |
+| `FieldGroup` | Groups/spaces multiple fields | — |
+
+```tsx
+// Horizontal orientation — for a button row in a footer, not just field layout
+<Field orientation="horizontal">
+  <Button variant="outline">Cancel</Button>
+  <Button type="submit">Save</Button>
+</Field>
+```
+
+## Form State Reference
+
+Read these off `form.state` (or via `form.Subscribe` for reactive access without extra re-renders):
+
+```ts
+form.state.canSubmit    // valid and not currently submitting
+form.state.isDirty      // has unsaved changes vs defaultValues
+form.state.isSubmitting // submit handler is in flight
+form.state.errors       // form-level (not per-field) errors
+```
+
 ## Container Variants
 
 The same form component (`MyFeatureForm`) works in all of these — zero duplication:

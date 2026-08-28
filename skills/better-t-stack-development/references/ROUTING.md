@@ -121,6 +121,34 @@ beforeLoad: async ({ context }) => {
 - Never use `navigate()` inside `beforeLoad`
 - Return session from `beforeLoad` to make it available in route context
 
+**Redirect with return URL** — after login, send the user back where they came from:
+
+```tsx
+beforeLoad: async ({ search }) => {
+  const session = await authClient.getSession();
+  if (!session.data) {
+    throw redirect({ to: "/login", search: { redirect: location.href } });
+  }
+},
+```
+
+**Multiple guards** — compose in a `beforeLoad` via route nesting (one guard per layout route) or an array of checks in a single `beforeLoad`. For per-route role checks, see the admin guard above.
+
+**Route-level error & not-found components** — catch render/loader failures per route instead of only the root:
+
+```tsx
+export const Route = createFileRoute("/(app)/posts/$id")({
+  component: PostPage,
+  errorComponent: ({ error, reset }) => (
+    <div className="p-8 text-center">
+      <p>{error.message}</p>
+      <button type="button" onClick={reset}>Try Again</button>
+    </div>
+  ),
+  notFoundComponent: () => <div className="p-8">Post not found</div>,
+});
+```
+
 ## Data Fetching
 
 Always use `orpc.*` generated options — never manual `queryFn`:
@@ -244,6 +272,35 @@ import { ErrorBoundary } from "react-error-boundary";
     </ErrorBoundary>
   )}
 </QueryErrorResetBoundary>
+```
+
+### Silent errors & retry
+
+Per-query opt-outs from the global toast handler, and retry tuning:
+
+```tsx
+// No global toast, custom handling
+const { data } = useQuery({
+  ...orpc.posts.list.queryOptions(),
+  meta: { errorHandler: "none" },
+  retry: false,
+});
+
+// Backoff retry (server errors only)
+const { data } = useQuery({
+  ...orpc.posts.list.queryOptions(),
+  retry: (failureCount, error) => {
+    if (isDefinedError(error) && error.status >= 400 && error.status < 500) return false;
+    return failureCount < 3;
+  },
+});
+```
+
+### Offline / network
+
+```tsx
+const isOnline = useOnlineStatus(); // from @tanstack/react-query
+// render a banner when !isOnline; TanStack Query serves cached data in the meantime
 ```
 
 ## Conditional Queries with `skipToken`
@@ -395,6 +452,28 @@ const items = query.data?.pages.flatMap((page) => page.items);
 ```
 
 Note the `input` for an infinite query is a **function** of the page param — unlike a regular query's plain `input` object.
+
+## Client Setup Checklist & Advanced oRPC
+
+Everything lives in `apps/web/src/utils/orpc.ts` — one singleton `queryClient` (with the global `QueryCache` error toast), one `RPCLink` with `credentials: "include"` (required for cookie session auth), exported as `orpc`.
+
+Verify after wiring: `orpc.*.queryOptions()`/`mutationOptions()` exist, error toasts fire on query failures, `credentials: "include"` is set, router context provides `orpc` + `queryClient`, types auto-complete, devtools appear in dev. If types aren't working, regenerate the route tree (`bun run dev`).
+
+**Default options** for all queries/mutations (set once on the client):
+
+```tsx
+export const orpc = createTanstackQueryUtils(client, {
+  experimental_defaults: { queries: { staleTime: 30_000 } },
+});
+```
+
+**Direct client calls** — bypass the query cache when you don't need one:
+
+```tsx
+const planet = await orpc.planet.find.call({ id: 123 });
+```
+
+**Client context** — per-call config via the `context` option (e.g. custom fetch options).
 
 ## Anti-Patterns
 

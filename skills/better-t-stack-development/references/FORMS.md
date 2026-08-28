@@ -257,7 +257,9 @@ export function CreateMyFeatureDialog() {
 </form.Field>
 ```
 
-### Select (shadcn)
+### Select (base-ui)
+
+Use the **base-ui Select** primitives (or the migrated shadcn Select — see [BASE_UI_MIGRATION.md](BASE_UI_MIGRATION.md)). If a component is still on the Radix shadcn Select, migrate it rather than extending it:
 ```tsx
 <form.Field name="role">
   {(field) => {

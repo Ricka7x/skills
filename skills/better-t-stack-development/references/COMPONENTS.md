@@ -2,6 +2,8 @@
 
 Patterns for building components in this stack. React 19 + React Compiler + shadcn/ui + TanStack Query.
 
+> Naming rules (files, symbols, hooks): [NAMING.md](NAMING.md).
+
 ---
 
 ## File Structure
@@ -366,7 +368,7 @@ export function useUserCard(userId: string) {
 | State type | Tool |
 |---|---|
 | Server / async data | TanStack Query (`useQuery`, `useMutation`) |
-| Shareable URL state | `nuqs` (`useQueryState`) |
+| Shareable URL state | TanStack Router search params (`validateSearch` / `useSearch`) |
 | Global UI state (theme, auth) | React Context |
 | Complex local state | `useReducer` |
 | Simple local state | `useState` |
@@ -385,21 +387,21 @@ const [users, setUsers] = useState([]);
 useEffect(() => { fetchUsers().then(setUsers); }, []);
 ```
 
-### URL State — nuqs
+### URL State — TanStack Router Search Params
 
-Use `nuqs` for state that should survive a page refresh, be shareable, or drive filtering/pagination:
+Use TanStack Router's typed search params (`validateSearch` + `useSearch` / `useNavigate`) for state that should survive a refresh, be shareable, or drive filtering/pagination. No separate URL-state library (`nuqs`) — TanStack Router already covers it, typed. Full pattern in [ROUTING.md](ROUTING.md) and [TABLES.md](TABLES.md).
 
 ```tsx
-import { useQueryState, parseAsInteger, parseAsString } from "nuqs";
+export const Route = createFileRoute("/(app)/users")({
+  validateSearch: z.object({
+    page: z.int().min(1).default(1),
+    search: z.string().optional(),
+  }),
+  component: UsersPage,
+});
 
 function UsersPage() {
-  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
-  const [search, setSearch] = useQueryState("search", parseAsString.withDefault(""));
-
-  const { data } = useQuery(orpc.users.list.queryOptions({
-    input: { page, search },
-  }));
-  // ...
+  const { page, search } = Route.useSearch(); // fully typed
 }
 ```
 

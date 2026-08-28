@@ -156,8 +156,13 @@ const handleCreate = async () => {
 
 ## Performance Rules
 
-- Use `useCallback` for FlatList `renderItem` and `keyExtractor`
-- Use `React.memo` on expensive list item components
+**React Compiler is on (same as web — COMPONENTS.md).** Don't add manual `useCallback`/`React.memo` for FlatList items — the compiler handles it. The only places manual memoization is still required on native:
+
+- **Reanimated worklet callbacks** (`useAnimatedStyle`, `useSharedValue` consumers) — outside the compiler's scope
+- Third-party `renderItem`/`keyExtractor` props when the library opts out of the compiler
+
+Other rules:
+
 - Prefer `expo-image` over React Native's `<Image>` for caching
 - Use `Pressable` over `TouchableOpacity`
 - Never put inline objects or arrow functions as FlatList props (creates new references on every render)

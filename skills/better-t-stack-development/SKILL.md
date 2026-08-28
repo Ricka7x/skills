@@ -1,19 +1,27 @@
 ---
 name: better-t-stack-development
 description: >
-  Full-stack development patterns for the Better-T-Stack setup.
-  Use this skill whenever working on any project in this stack — adding a feature,
-  creating a route, building a form, writing a procedure, defining a schema,
-  scaffolding a new package, reviewing code, or writing tests. Triggers on: new feature,
-  new page, new form, new route, new endpoint, new procedure, new table, new package,
-  new component, new hook, build a component, write a test, add a test, vitest, testing,
-  test setup, better-auth plugin, auth plugin, custom plugin, oRPC, TanStack, better-auth,
-  Drizzle, Hono, Expo, React 19, shadcn, monorepo, Turborepo, or any coding task in this stack.
+  Full-stack development patterns for the Better-T-Stack setup — the single
+  compound source of truth for this stack. Use whenever working on any project
+  in this stack: adding a feature, creating a route, building a form, writing a
+  procedure or middleware, defining a schema, scaffolding a package, reviewing
+  code, or writing tests. Triggers on: new feature, new page, new form, new
+  route, new endpoint, new procedure, new middleware, new table, data table,
+  filters, pagination, new package, new component, new hook, build a component,
+  write a test, add a test, vitest, testing, test setup, better-auth plugin, auth
+  plugin, custom plugin, oRPC, TanStack, better-auth, Drizzle, Hono, Expo,
+  React 19, shadcn, base-ui, monorepo, Turborepo, Stripe, payments, uploads, S3,
+  email, Resend, AI, Gemini, OpenAPI, env, or any coding task in this stack.
+  Read SKILL.md as the index, then load only the reference for your task.
 ---
 
 # Better-T-Stack Development
 
 Opinionated full-stack setup built on top of [Better-T-Stack](https://better-t-stack.dev). This skill captures the concrete decisions, patterns, and conventions used across projects — not the generic docs.
+
+## How to Use This Skill
+
+> **This file is the index.** For any task, read **only the one reference** below that matches it — each is self-contained for its task. **Do not read the whole skill or all references.** The stack, structure, and code style sections below are the only things you need up front; everything else is loaded on demand.
 
 ## Stack at a Glance
 
@@ -29,6 +37,7 @@ Opinionated full-stack setup built on top of [Better-T-Stack](https://better-t-s
 | Database | Drizzle ORM + PostgreSQL |
 | Validation | Zod 4 (everywhere) |
 | Web UI | shadcn/ui + base-ui (migrating from Radix) |
+| Web tables | TanStack Table (@tanstack/react-table) |
 | Native UI | heroui-native + Tailwind (via uniwind) |
 | Email | Resend + React Email |
 | Payments | Stripe |
@@ -92,18 +101,46 @@ Always run `bun x ultracite fix` before committing. Key rules enforced:
 
 ## What to Read for Each Task
 
+**API & Backend**
+
+| Task | Reference |
+|---|---|
+| Adding a new API procedure / router | [references/PROCEDURES.md](references/PROCEDURES.md) |
+| Auth guards / middleware / permissions / rate limits | [references/MIDDLEWARE.md](references/MIDDLEWARE.md) |
+| Using/extending the base auth instance & clients | [references/AUTH.md](references/AUTH.md) |
+| Building a custom better-auth plugin | [references/BETTER-AUTH-PLUGIN.md](references/BETTER-AUTH-PLUGIN.md) |
+| Org-scoped data, permissions, RBAC | [references/MULTI-TENANCY.md](references/MULTI-TENANCY.md) |
+| Writing or modifying a DB schema | [references/DATABASE.md](references/DATABASE.md) |
+| Stripe subscriptions / payments / webhooks | [references/PAYMENTS.md](references/PAYMENTS.md) |
+| File uploads to S3-compatible storage | [references/STORAGE.md](references/STORAGE.md) |
+| Transactional email (Resend + React Email) | [references/EMAIL.md](references/EMAIL.md) |
+| AI features (Vercel AI SDK + Gemini) | [references/AI.md](references/AI.md) |
+| API docs / OpenAPI / Fumadocs | [references/OPENAPI.md](references/OPENAPI.md) |
+
+**Web**
+
 | Task | Reference |
 |---|---|
 | Building a component, hook, or UI feature | [references/COMPONENTS.md](references/COMPONENTS.md) |
-| Setting up or writing tests | [references/TESTING.md](references/TESTING.md) |
-| Building a custom better-auth plugin | [references/BETTER-AUTH-PLUGIN.md](references/BETTER-AUTH-PLUGIN.md) |
-| Adding a new API procedure / router | [references/PROCEDURES.md](references/PROCEDURES.md) |
-| Writing or modifying a DB schema | [references/DATABASE.md](references/DATABASE.md) |
-| Building a new form | [references/FORMS.md](references/FORMS.md) |
 | Adding a new web route / page | [references/ROUTING.md](references/ROUTING.md) |
-| Working on the Expo native app | [references/NATIVE.md](references/NATIVE.md) |
+| Building a new form | [references/FORMS.md](references/FORMS.md) |
+| Data tables with filters / search / pagination | [references/TABLES.md](references/TABLES.md) |
 | Query invalidation across oRPC + Better Auth (multi-tenant) | [references/QUERY_INVALIDATION.md](references/QUERY_INVALIDATION.md) |
 | Migrating a component from Radix UI to Base UI | [references/BASE_UI_MIGRATION.md](references/BASE_UI_MIGRATION.md) |
+
+**Native**
+
+| Task | Reference |
+|---|---|
+| Working on the Expo native app | [references/NATIVE.md](references/NATIVE.md) |
+
+**Cross-cutting**
+
+| Task | Reference |
+|---|---|
+| Setting up or writing tests | [references/TESTING.md](references/TESTING.md) |
+| Adding a new env variable | [references/ENV.md](references/ENV.md) |
+| Naming conventions (files, symbols, DB, API, env) | [references/NAMING.md](references/NAMING.md) |
 
 ---
 

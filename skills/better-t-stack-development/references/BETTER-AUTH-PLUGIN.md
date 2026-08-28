@@ -81,6 +81,22 @@ export const schema = {
 } satisfies BetterAuthPluginDBSchema;
 ```
 
+**Field properties:** `type` (`string | number | boolean | date`), `required` (default `true`), `unique` (default `false`), `defaultValue`, `references` (FK with `onDelete`), and `input` (default `true` — set `false` to keep a field out of client write endpoints).
+
+**Extending an existing table** (e.g. `user`) instead of adding a new one — new fields are auto-inferred into `getSession` / `signUpEmail`:
+
+```ts
+export const schema = {
+  user: {
+    fields: {
+      plan: { type: "string", required: false, input: false }, // set server-side only
+    },
+  },
+} satisfies BetterAuthPluginDBSchema;
+```
+
+`modelName` can override the SQL table name; `disableMigration` opts a table out of the generated migration.
+
 ### `types.ts`
 
 ```ts

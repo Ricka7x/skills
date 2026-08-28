@@ -81,6 +81,8 @@ export const orgProcedure = publicProcedure.use(requireOrg);
 
 With `orgProcedure`, handlers receive `context.orgId` directly — no need to pass it in every handler body. But **you still pass `orgId` as input from the client** so it ends up in the query key for cache isolation.
 
+> **Never authorize from `input.orgId`.** It exists for the query key only. Authorization always derives from the session (middleware/`context.orgId`) — a client can send any `orgId`. See [MULTI-TENANCY.md](MULTI-TENANCY.md).
+
 ```ts
 // Server handler — uses context.orgId (validated server-side)
 export const invoicesRouter = {

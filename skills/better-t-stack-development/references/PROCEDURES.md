@@ -1,5 +1,7 @@
 # API Procedures (oRPC + Hono)
 
+> Naming rules (procedures, routers, schemas): [NAMING.md](NAMING.md).
+
 ## File Locations
 
 ```
@@ -173,6 +175,40 @@ export const appRouter = { users: usersRouter, posts: postsRouter }
 export const appRouter = { usersRouter, postsRouter }
 ```
 
+## Schema Organization
+
+Start inline, promote to shared only when reused:
+
+- **Inline** — simple schema used once (a `get` id input).
+- **Shared (top of router file)** — reused across a router's procedures.
+- **External (`packages/api/src/schemas/`)** — shared across routers.
+
+```ts
+// Base entity + derived input schemas — reuse, don't redefine
+const userSchema = z.object({ id: z.uuid(), name: z.string(), email: z.email(), role: z.enum(["user", "admin"]), createdAt: z.coerce.date() });
+const createUserSchema = userSchema.omit({ id: true, createdAt: true });
+const updateUserSchema = createUserSchema.partial();
+```
+
+**Reusable list-input components** — compose instead of copy-pasting:
+
+```ts
+const offsetPagination = z.object({ page: z.int().min(1).default(1), pageSize: z.int().min(1).max(100).default(20) });
+const sorting = z.object({ sortBy: z.string(), sortOrder: z.enum(["asc", "desc"]).default("desc") });
+const searchable = z.object({ search: z.string().min(3).optional() });
+
+const listInputSchema = offsetPagination.merge(sorting).merge(searchable);
+```
+
+Entity/naming conventions: `userSchema` (entity), `createUserSchema`/`updateUserSchema` (inputs), `paginatedUsersSchema` (response). See [TABLES.md](TABLES.md) for the full list-table shape.
+
+## Procedure & Router Organization
+
+- Order a router's procedures logically: **reads first** (`list`, `get`, `search`), then **writes** (`create`, `update`, `delete`), then special actions (`publish`, `archive`).
+- Split a router into its **own file** when it hits ~5+ procedures; split into a **folder** (`routers/payments/` with `checkout.ts`, `invoices.ts`, `subscriptions.ts` + an `index.ts` composing them) when a domain has 3+ sub-routers.
+- Middleware: shared guards (`requireAuth`, `requireAdmin`) live in `packages/api/src/index.ts`; resource-specific ownership middleware stays **co-located with the router** that uses it (see [MIDDLEWARE.md](MIDDLEWARE.md)).
+- Export `AppRouter` and `AppRouterClient` types for the frontend from `routers/index.ts`.
+
 ## Error Handling
 
 ```ts
@@ -185,9 +221,32 @@ throw new ORPCError("BAD_REQUEST", { message: "Invalid file type",  // 400
   data: { allowedTypes: ["image/png", "image/jpeg"] },
 })
 throw new ORPCError("INTERNAL_SERVER_ERROR")  // 500
+throw new ORPCError("TOO_MANY_REQUESTS")       // 429 — rate limited
 ```
 
 Always check ownership before mutating — never trust that a user owns a resource just because they're authenticated.
+
+**Plan-gated features:** throw a forbidden-family error with structured `data` (see [PAYMENTS.md](PAYMENTS.md) + [MIDDLEWARE.md](MIDDLEWARE.md)):
+
+```ts
+throw new ORPCError("FORBIDDEN", {
+  message: "This feature requires the pro plan",
+  data: { code: "PLAN_REQUIRED", currentTier: "free", requiredTier: "pro" },
+});
+```
+
+**External services (Stripe, S3, Resend, AI):** wrap in try/catch, translate to `ORPCError` with a user-safe message, and log the real cause server-side — never leak provider errors to the client:
+
+```ts
+try {
+  await stripe.subscriptions.retrieve(id);
+} catch (error) {
+  console.error("[billing] failed to retrieve subscription", error);
+  throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Unable to load billing" });
+}
+```
+
+**Global interceptor:** the Hono server's `onError` formats/logs errors; per-procedure errors only need the right `ORPCError`. Don't re-wrap errors inside handlers.
 
 ## Cursor-Based Pagination
 

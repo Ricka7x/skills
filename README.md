@@ -47,12 +47,8 @@ npx skills add Ricka7x/skills --list
 
 | Skill                                 | Description                                                   |
 | ------------------------------------- | ------------------------------------------------------------- |
-| **better-t-stack-development**        | Core development patterns for the Better-T-Stack architecture |
-| **better-auth-plugin**                | Patterns for building custom Better Auth plugins              |
-| **hono-orpc-endpoints**               | API architecture patterns using Hono + oRPC                   |
-| **tanstack-router-orpc**              | Integration patterns between TanStack Router and oRPC         |
-| **tanstack-form-architecture**        | Form architecture using TanStack Form and Zod                 |
-| **shadcn-radix-to-base-ui-migration** | Migration patterns from Radix/shadcn to Base UI               |
+| **better-t-stack-development**        | **Compound skill — all conventions for the Better-T-Stack architecture** (procedures, routing, forms, tables, auth, multi-tenancy, plugins, database, testing, native, payments, storage, email, AI, OpenAPI, base-ui migration) |
+| **asset-forge**                       | Image/video asset generation & processing CLI (icons, OG images, conversion) |
 
 ---
 
@@ -60,28 +56,18 @@ npx skills add Ricka7x/skills --list
 
 ```
 skills/
-  better-auth-plugin/
-    SKILL.md
-    references/
-
   better-t-stack-development/
     SKILL.md
-    references/
+    references/        → procedures, routing, forms, tables, auth, multi-tenancy,
+                         plugins, database, testing, native, payments, storage,
+                         email, AI, OpenAPI, base-ui migration
 
-  hono-orpc-endpoints/
-    SKILL.md
-    references/
-
-  tanstack-router-orpc/
-    SKILL.md
-    references/
-
-  tanstack-form-architecture/
-    SKILL.md
-
-  shadcn-radix-to-base-ui-migration/
+  asset-forge/
     SKILL.md
 ```
+
+The **better-t-stack-development** skill is the single source of truth for the stack — all
+patterns live as references under it (no duplicated standalone skills).
 
 Each skill directory contains:
 

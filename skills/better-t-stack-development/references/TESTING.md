@@ -6,6 +6,43 @@ Vitest for unit + integration tests. Testing Library for component tests. better
 
 ---
 
+## TDD Workflow
+
+Tests come **first** — they are the spec. Red → green → refactor:
+
+1. **Red** — write a failing test that pins the behavior you're about to add.
+   Run it (`bun run test` in the package). It must fail for the *right* reason
+   (assertion mismatch / not found), not a compile or import error.
+2. **Green** — implement the minimum code to make it pass. Don't build ahead.
+3. **Refactor** — clean up while staying green, then re-run the suite.
+
+Every new or changed behavior ships with its tests **in the same change**. For
+genuinely visual work (animation, polish) tests may be written alongside the
+code — but never deferred to a follow-up commit.
+
+### Drive these with a test first
+
+| Layer | What to pin | Write it as |
+|---|---|---|
+| Zod schema | validation rules, edge cases | unit test on the schema |
+| Utility / pure function | all branches, edge cases | unit test |
+| oRPC procedure | happy path, auth, not-found, forbidden | call the handler with a mocked context + test-created session |
+| better-auth plugin | validation → session → admin check → DB write | `createTestAuth` + `testUtils` (in-memory) |
+| Custom hook (`use*`) | returned values, state changes | `renderHook` + `createQueryWrapper` |
+| Component | renders, interactions, conditional UI | Testing Library (query by role/label) |
+| Form | validation errors, successful submit | RTL + mocked mutation |
+
+### Definition of done
+
+- New/changed behavior has a test (or an explicit, agreed exception)
+- `bun run test` is green for the package (`turbo test --filter=<pkg>` at root)
+- `bun x ultracite check` passes
+
+A change that ships untested behavior or leaves the suite red is a **review
+blocker**.
+
+---
+
 ## Setup
 
 ### 1. Install deps in each package/app that needs tests
@@ -245,65 +282,84 @@ describe("postsRouter", () => {
 
 ### Auth Integration Tests — better-auth test-utils
 
-The `testUtils` plugin must be added to your auth config in test environments only:
+> **Prefer a test-only auth instance.** The Better Auth docs recommend keeping
+> `testUtils()` out of the production auth config. A separate instance avoids the
+> TypeScript inference caveat of conditionally spreading `testUtils()` into
+> `plugins` (which can stop `ctx.test` from being inferred correctly) and lets
+> you run against an **in-memory database** — no Postgres/Docker/env needed.
+
+The auth package ships a `createTestAuth` helper
+(`packages/auth/src/test-utils.ts`) that builds an isolated Better Auth instance
+on `betterAuth/adapters/memory` with `testUtils()` pre-installed. It pre-seeds
+the memory adapter with every table declared by the loaded plugins, so
+`findMany`/`count` work before any row exists.
 
 ```ts
-// packages/auth/src/index.ts
-import { betterAuth } from "better-auth";
-import { testUtils } from "better-auth/plugins";
+// packages/auth/src/plugins/my-plugin/__tests__/my-plugin.test.ts
+import { beforeAll, describe, expect, it } from "vitest";
+import type { TestHelpers } from "better-auth/plugins";
+import { createTestAuth } from "../../../test-utils";
+import { myPlugin } from "../index";
 
-export const auth = betterAuth({
-  // ... your existing config
-  plugins: [
-    // ... your existing plugins
-    ...(process.env.NODE_ENV === "test" ? [testUtils({ captureOTP: true })] : []),
-  ],
+const buildAuth = () => createTestAuth([myPlugin({ /* options */ })]);
+let auth: Awaited<ReturnType<typeof buildAuth>>;
+let test: TestHelpers;
+
+describe("my-plugin", () => {
+  beforeAll(async () => {
+    auth = await buildAuth();
+    const ctx = await auth.$context;
+    test = ctx.test;
+  });
 });
 ```
+
+> Keep the `plugins` array as a literal (or via a `buildAuth` factory) — that
+> preserves Better Auth's endpoint type inference, so `auth.api.<endpoint>` is
+> fully typed. Passing a pre-built `BetterAuthPlugin[]` variable collapses the
+> inferred `auth.api` to the base endpoints.
 
 **Testing protected routes:**
 
 ```ts
-// packages/auth/src/__tests__/protected.test.ts
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { auth } from "../index";
-import type { TestHelpers } from "better-auth/plugins";
+it("getSession returns null with no headers", async () => {
+  const session = await auth.api.getSession({ headers: new Headers() });
+  expect(session).toBeNull();
+});
 
-describe("session auth", () => {
-  let test: TestHelpers;
+it("getSession returns user for valid session", async () => {
+  const user = test.createUser({ email: "session-test@example.com" });
+  await test.saveUser(user);
 
-  beforeAll(async () => {
-    const ctx = await auth.$context;
-    test = ctx.test;
-  });
+  const headers = await test.getAuthHeaders({ userId: user.id });
+  const session = await auth.api.getSession({ headers });
 
-  it("getSession returns null with no headers", async () => {
-    const session = await auth.api.getSession({
-      headers: new Headers(),
-    });
-    expect(session).toBeNull();
-  });
+  expect(session?.user.id).toBe(user.id);
+  expect(session?.user.email).toBe("session-test@example.com");
 
-  it("getSession returns user for valid session", async () => {
-    const user = test.createUser({ email: "session-test@example.com" });
-    await test.saveUser(user);
-
-    const headers = await test.getAuthHeaders({ userId: user.id });
-    const session = await auth.api.getSession({ headers });
-
-    expect(session?.user.id).toBe(user.id);
-    expect(session?.user.email).toBe("session-test@example.com");
-
-    await test.deleteUser(user.id);
-  });
+  await test.deleteUser(user.id);
 });
 ```
 
 **Testing OTP flows:**
 
+OTP capture requires `testUtils({ captureOTP: true })` — build a dedicated
+instance for it (or add the option to `createTestAuth`):
+
+```ts
+import { betterAuth } from "better-auth";
+import { memoryAdapter } from "better-auth/adapters/memory";
+import { testUtils, emailOTP } from "better-auth/plugins";
+
+const db: Record<string, unknown[]> = {};
+const auth = betterAuth({
+  database: memoryAdapter(db),
+  plugins: [testUtils({ captureOTP: true }), emailOTP({ /* ... */ })],
+});
+```
+
 ```ts
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { auth } from "../index";
 import type { TestHelpers } from "better-auth/plugins";
 
 describe("OTP verification", () => {
@@ -340,20 +396,26 @@ describe("OTP verification", () => {
 **Testing custom better-auth plugins:**
 
 ```ts
-// packages/auth/src/plugins/__tests__/audit-log.test.ts
+// packages/auth/src/plugins/audit-log/__tests__/audit-log.test.ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { auth } from "../../index";
+import { admin, organization } from "better-auth/plugins";
 import type { TestHelpers } from "better-auth/plugins";
+import { createTestAuth } from "../../../test-utils";
+import { auditLog } from "../index";
+
+const buildAuth = () =>
+  createTestAuth([admin(), organization(), auditLog({ adminRoles: ["admin"] })]);
+let auth: Awaited<ReturnType<typeof buildAuth>>;
+let test: TestHelpers;
+let userId: string;
 
 describe("audit-log plugin", () => {
-  let test: TestHelpers;
-  let userId: string;
-
   beforeAll(async () => {
+    auth = await buildAuth();
     const ctx = await auth.$context;
     test = ctx.test;
 
-    const user = test.createUser({ email: "audit-test@example.com" });
+    const user = test.createUser({ email: "audit-test@example.com", role: "admin" });
     await test.saveUser(user);
     userId = user.id;
   });
@@ -374,7 +436,7 @@ describe("audit-log plugin", () => {
       query: { userId },
     });
 
-    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.events.length).toBeGreaterThan(0);
   });
 });
 ```

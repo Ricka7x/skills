@@ -657,43 +657,66 @@ throw new APIError("INTERNAL_SERVER_ERROR", { message: "Unexpected error" });
 
 ## Testing Plugins
 
-Use the `testUtils` plugin (gate behind `NODE_ENV === "test"`) to create sessions and test endpoints. See [TESTING.md](TESTING.md) for the full pattern.
+Use the `testUtils` plugin to create sessions and exercise endpoints against a
+**test-only auth instance** — the Better Auth docs recommend keeping
+`testUtils()` out of the production config. The auth package ships
+`createTestAuth` (`packages/auth/src/test-utils.ts`): an in-memory
+(`betterAuth/adapters/memory`) Better Auth instance with `testUtils()`
+pre-installed, so no Postgres/Docker/env is needed. See
+[TESTING.md](TESTING.md) for the full pattern.
 
-Quick example:
+Keep the `plugins` array literal (or a `buildAuth` factory) so `auth.api.*`
+stays fully typed:
 
 ```ts
-import { describe, it, expect, beforeAll } from "vitest";
-import { auth } from "../../index";
+// packages/auth/src/plugins/audit-log/__tests__/audit-log.test.ts
+import { beforeAll, describe, expect, it } from "vitest";
 import type { TestHelpers } from "better-auth/plugins";
+import { createTestAuth } from "../../../test-utils";
+import { auditLog } from "../index";
+
+const buildAuth = () => createTestAuth([auditLog({ adminRoles: ["admin"] })]);
+let auth: Awaited<ReturnType<typeof buildAuth>>;
+let test: TestHelpers;
 
 describe("auditLog plugin", () => {
-  let test: TestHelpers;
-
   beforeAll(async () => {
+    auth = await buildAuth();
     const ctx = await auth.$context;
     test = ctx.test;
   });
 
-  it("records a sign-in event", async () => {
+  it("logs a custom event", async () => {
     const user = test.createUser({ email: "audit-test@example.com" });
     await test.saveUser(user);
 
-    // Simulate sign-in to trigger the hook
     const headers = await test.getAuthHeaders({ userId: user.id });
 
-    // Query via the plugin endpoint
-    const result = await auth.api.auditLog.listEntries({
+    const result = await auth.api.logEvent({
       headers,
-      query: { userId: user.id },
+      body: { event: "custom_event" },
     });
-
-    expect(result.logs.length).toBeGreaterThan(0);
-    expect(result.logs[0].action).toBe("sign-in");
+    expect(result.success).toBe(true);
 
     await test.deleteUser(user.id);
   });
 });
 ```
+
+Notes:
+
+- Include supporting plugins your endpoints depend on — e.g. `admin()` (for
+  `user.role`), `organization()` (for the `member` model and `test.addMember`),
+  or `@better-auth/stripe` with `subscription: { enabled: true, plans: [] }`
+  (registers the `subscription` model used by `deletePlan`; the `plans` value is
+  required — the stripe plugin's `init` calls `.some()` on it and crashes
+  construction if it's missing).
+- Assert on the `message` of the error-codes constant, not the code key — the
+  thrown `APIError` exposes the human message.
+- Org helpers (`createOrganization`, `saveOrganization`, `addMember`) are typed
+  optional on `TestHelpers`; when the organization plugin is installed, cast
+  `ctx.test` to `TestHelpersWithOrg` (exported from `test-utils.ts`) to call
+  them without non-null assertions.
 
 ---
 

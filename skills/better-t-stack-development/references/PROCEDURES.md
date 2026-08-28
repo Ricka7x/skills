@@ -157,6 +157,75 @@ export type AppRouter = typeof appRouter;
 export type AppRouterClient = RouterClient<typeof appRouter>;
 ```
 
+**3. Test the router — write tests first (TDD), they're part of done (see [TESTING.md](TESTING.md) for the loop):**
+
+Procedures are tested at the handler level — no HTTP layer. Mock the DB, then invoke each procedure with `createProcedureClient` and a fake session context:
+
+```ts
+// packages/api/src/routers/__tests__/my-feature.test.ts
+import { createProcedureClient } from "@orpc/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  membership: {
+    memberId: "m1",
+    userId: "u1",
+    organizationId: "org-1",
+    role: "owner",
+    visibilityScope: "property_scoped",
+    permissions: { myFeature: ["create", "view"] },
+  },
+  itemFindMany: vi.fn(),
+  itemFindFirst: vi.fn(),
+}));
+
+vi.mock("@condomin-ia/db", () => ({
+  eq: vi.fn(),
+  db: {
+    query: {
+      myTable: {
+        findMany: mocks.itemFindMany,
+        findFirst: mocks.itemFindFirst,
+      },
+    },
+  },
+}));
+
+vi.mock("../../community-access", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../community-access")>()),
+  getMembership: async () => mocks.membership,
+}));
+
+import { myFeatureRouter } from "../my-feature";
+
+const context = {
+  session: { user: { id: "u1" }, session: {} },
+  membership: mocks.membership,
+} as never;
+const listClient = createProcedureClient(myFeatureRouter.list, { context });
+
+describe("myFeature.list", () => {
+  it("returns the user's items", async () => {
+    mocks.itemFindMany.mockResolvedValue([{ id: "x", name: "A" }]);
+    const res = await listClient({ page: 1, pageSize: 20 });
+    expect(res.items).toHaveLength(1);
+  });
+
+  it("handles an empty result set", async () => {
+    mocks.itemFindMany.mockResolvedValue([]);
+    const res = await listClient({ page: 1, pageSize: 20 });
+    expect(res.items).toEqual([]);
+    expect(res.total).toBe(0);
+  });
+});
+```
+
+Cover per procedure: happy path, auth checks, and the error paths the handler
+throws — `NOT_FOUND` for missing rows, `FORBIDDEN` for rows owned by others.
+See the repo's existing `packages/api/src/lib/__tests__/*-router.test.ts` for
+the full pattern, and [TESTING.md](TESTING.md) for the TDD loop, per-layer test
+types, and the better-auth test-utils alternative for auth flows.
+
 ## Naming Conventions
 
 **Procedure names** — standard CRUD verbs only:

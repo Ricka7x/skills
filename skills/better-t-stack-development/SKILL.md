@@ -99,6 +99,24 @@ Always run `bun x ultracite fix` before committing. Key rules enforced:
 
 ---
 
+## Tests & TDD
+
+Tests are **part of done**. Every new or changed behavior — procedure, route,
+form, component, hook, schema, or auth plugin — ships with tests in the same
+change. The default is **test-first** (red → green → refactor): write the
+failing test as the spec, watch it fail for the right reason, then implement
+the minimum to pass. For genuinely visual work (animation, polish) write the
+tests alongside the code — never in a follow-up commit.
+
+- Run a package's tests locally: `bun run test` in the package dir, or
+  `turbo test --filter=<pkg>` at the root
+- Follow the TDD loop, per-layer test types, and the in-memory better-auth
+  plugin harness in [references/TESTING.md](references/TESTING.md)
+- Don't commit a change that leaves the suite red or adds untested behavior —
+  both are review blockers
+
+---
+
 ## What to Read for Each Task
 
 **API & Backend**

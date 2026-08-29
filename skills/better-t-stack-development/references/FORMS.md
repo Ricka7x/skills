@@ -82,6 +82,10 @@ interface MyFeatureFormProps {
   formId: string;
 }
 
+/**
+ * Required fields: append " *" to the FieldLabel text (e.g. `Name *`).
+ * Optional fields get no marker.
+ */
 export function MyFeatureForm({ form, formId }: MyFeatureFormProps) {
   return (
     <form
